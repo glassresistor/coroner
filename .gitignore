@@ -1,5 +1,9 @@
+#coroner ignore
 local_settings.py
 *.swp
+cached
+meta.pickle
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

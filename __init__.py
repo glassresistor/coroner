@@ -93,7 +93,6 @@ def export_to_json_files(ctype, articles, on_each):
         if not os.path.exists(path):
             os.makedirs(path)
         path = os.path.join(path, '%s.orig' % article.vid)
-        print path
         json.dump(dict(article), open(path+'.json', 'w'), ensure_ascii=False, sort_keys=True, indent=4)
         on_each(article, path)
 
@@ -114,7 +113,8 @@ def build_articles():
     social_title.field_social_title_value as social_title,
     social_dek.field_social_dek_value as social_description,
 
-    master_image_file.filename
+    master_image_file.filename as master_image_filename,
+    master_image_file.filepath as master_image_filepath
 
     from content_type_article as article 
     left join node ON article.nid = node.nid and article.vid = node.vid
@@ -132,7 +132,15 @@ def build_articles():
     left join files as master_image_file ON master_image.field_master_image_fid = master_image_file.fid
     """
     articles = connection.execution_options(stream_results=True).execute(select)
-    export_to_json_files('articles', articles)
+    def copy_master_image(article, path):
+        try:
+            from_path = os.path.join(settings.REMOTE_FILES, article.master_image_filepath[6:])
+            print from_path
+            scp.get(from_path,
+                path+'.master_image.'+article.master_image_filename)
+        except Exception:
+            pass
+    export_to_json_files('articles', articles, copy_master_image)
 
 
 def build_authors():

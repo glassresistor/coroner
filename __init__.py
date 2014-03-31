@@ -8,20 +8,18 @@ import local_settings as settings
 from sqlalchemy import *
 from scp import SCPClient
 
-
-engine = create_engine(settings.MYSQL_CONNECTION_STRING, encoding='latin-1',
-    connect_args={'cursorclass': MySQLdb.cursors.SSCursor})
-connection = engine.connect()
-
-
-
 ssh = paramiko.SSHClient()
 ssh.load_system_host_keys()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 ssh.connect(settings.REMOTE_SERVER)
-
 scp = SCPClient(ssh.get_transport())
 
+def rebuild_engine():
+    cursor = MySQLdb.cursors.SSCursor
+    engine = create_engine(settings.MYSQL_CONNECTION_STRING, encoding='latin-1',
+        connect_args={'cursorclass':cursor})
+    connection = engine.connect()
+    return (engine, connection, cursor)
 
 """
 meta = MetaData()
@@ -42,61 +40,29 @@ articles_select = select([
     files.c.filepath])
 """
 
-def build_articles():
-    articles_select = """
-    select
-    article.nid as nid,
-    article.vid as vid,
-    body.field_article_text_value as data,
-    body.field_article_text_format as data_format,
-    
-    node.title as title,
-    dek.field_dek_value as description, 
+def export_to_json_files(ctype, select, index_id, on_each):
+    (engine, connection, cursor) = rebuild_engine()
+    articles = connection.execution_options(
+        stream_results=True).execute(select % index_id)
+    try:
+        for article in articles:
+            if article:
+                index_id = article.nid
+                path = os.path.join('.', 'cached', ctype, str(article.nid))
+                print path
+                print article.nid
+                if not os.path.exists(path):
+                    os.makedirs(path)
+                path = os.path.join(path, '%s.orig' % article.vid)
+                json.dump(dict(article), open(path+'.json', 'w'), ensure_ascii=False, sort_keys=True, indent=4)
+                on_each(article, path, scp)
+    except Exception, e:
+        print e
+        articles.close()
+        connection.close()
+        export_to_json_files(ctype, select, index_id, on_each)
 
-    alt_title.field_alternate_title_value as alt_title,
-    alt_dek.field_alternate_dek_value as alt_description,
-
-    social_title.field_social_title_value as social_title,
-    social_dek.field_social_dek_value as social_description,
-
-    master_image_file.filename
-
-    from content_type_article as article 
-    left join node ON article.nid = node.nid and article.vid = node.vid
-
-    left join content_field_dek as dek ON node.nid = dek.nid  and node.vid = dek.vid
-    left join content_field_article_text as body ON node.nid = body.nid and node.vid = body.vid 
-
-    left join content_field_alternate_dek as alt_dek ON node.nid = alt_dek.nid and node.vid = alt_dek.vid 
-    left join content_field_alternate_title as alt_title ON node.nid = alt_title.nid  and node.vid = alt_title.vid 
-
-    left join content_field_social_dek as social_dek ON node.nid = social_dek.nid  and node.vid = social_dek.vid
-    left join content_field_social_title as social_title ON node.nid = social_title.nid  and node.vid = social_title.vid
-
-    left join content_field_master_image as master_image ON node.nid = master_image.nid and node.vid = master_image.vid
-    left join files as master_image_file ON master_image.field_master_image_fid = master_image_file.fid
-    """
-    articles = connection.execution_options(stream_results=True).execute(articles_select)
-
-
-    for article in articles:
-        path = os.path.join('.', 'articles', str(article.nid))
-        if not os.path.exists(path):
-            os.makedirs(path)
-        path = os.path.join(path, '%s.orig.json' % article.vid)
-        print path
-        json.dump(dict(article), open(path, 'w'), ensure_ascii=False, sort_keys=True, indent=4)
-
-def export_to_json_files(ctype, articles, on_each):
-    for article in articles:
-        path = os.path.join('.', 'cached', ctype, str(article.nid))
-        if not os.path.exists(path):
-            os.makedirs(path)
-        path = os.path.join(path, '%s.orig' % article.vid)
-        json.dump(dict(article), open(path+'.json', 'w'), ensure_ascii=False, sort_keys=True, indent=4)
-        on_each(article, path)
-
-def build_articles():
+def build_articles(index_id=0):
     select = """
     select
     article.nid as nid,
@@ -130,17 +96,19 @@ def build_articles():
 
     left join content_field_master_image as master_image ON node.nid = master_image.nid and node.vid = master_image.vid
     left join files as master_image_file ON master_image.field_master_image_fid = master_image_file.fid
+    where article.nid >= %s
+    order by article.nid
     """
-    articles = connection.execution_options(stream_results=True).execute(select)
-    def copy_master_image(article, path):
-        try:
+    def copy_master_image(article, path, scp): 
+        if article.master_image_filepath:
             from_path = os.path.join(settings.REMOTE_FILES, article.master_image_filepath[6:])
-            print from_path
-            scp.get(from_path,
-                path+'.master_image.'+article.master_image_filename)
-        except Exception:
-            pass
-    export_to_json_files('articles', articles, copy_master_image)
+            index_id = article.nid
+            try:
+                scp.get(from_path,
+                    path+'.master_image.'+article.master_image_filename)
+            except Exception, e:
+                print e
+    export_to_json_files('articles', select, index_id, copy_master_image)
 
 
 def build_authors():

@@ -12,9 +12,9 @@ Amazon offers RDS for Postgres supporting versions 9.3.X this includes backups a
 ##Coroner Staging Machine
 This machine needs to store json and binary data while its being collated out of the drupal database.  It will have mirrors_server installed on it including HTTP server so that we call view the imported components and pointed at the postgres machine.
 
-All of the data stored on this server should be put on an EBS volume which is backed up whenever successful builds/migrations happen.
+In our case a t2.medium should suffice. All of the data stored on this server should be put on an EBS volume which is backed up whenever successful builds/migrations happen.  Whenever we are not actively migrating the server can be turned off and the EBS unmounted and put into storage for use later.
 
-This machine needs to also have an ssh tunnel open to the drupal mysql database.
+This machine needs to also have an ssh tunnel open to the drupal mysql database.  We should try and make sure its a read only access account for security reasons.
 
 ##Extra
 * Smoke can either just run on the coroner server so that content can be viewed/edited live.

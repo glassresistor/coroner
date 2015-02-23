@@ -1,12 +1,14 @@
+#!/usr/bin/env python
 import os
 import json
 import pickle
 import paramiko
 import MySQLdb.cursors
-
-import local_settings as settings
 from sqlalchemy import *
 from scp import SCPClient
+import argparse
+
+import local_settings as settings
 
 ssh = paramiko.SSHClient()
 ssh.load_system_host_keys()
@@ -136,3 +138,22 @@ def build_authors():
         except Exception, e:
             print article.photograph_filename
     export_to_json_files('authors', articles, copy_photo)
+
+def build_component(component_type, number):
+    if number:
+        print("Limit them records")
+    #rebuild_engine()
+    #build_articles()
+    print("Building %s", component_type)
+
+def main():
+    COMPONENT_TYPE_CHOICES = ['article', 'all']
+    parser = argparse.ArgumentParser(
+            description="Converts Drupal6 data into JSON for Mirrors")
+    parser.add_argument('component', choices=COMPONENT_TYPE_CHOICES, help="specify component to convert (or `all` for everything)")
+    parser.add_argument('-n', '--number', type=int, help="number of Drupal records to return")
+    args = parser.parse_args()
+    build_component(args.component, args.number)
+
+if __name__ == '__main__':
+    main()

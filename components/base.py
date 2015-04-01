@@ -1,104 +1,94 @@
 import os
 import json
-import pickle
-import paramiko
+import logging
 import MySQLdb.cursors
-from sqlalchemy import *
-from scp import SCPClient
+from sqlalchemy import create_engine
 import local_settings as settings
+# import paramiko
+# from scp import SCPClient
 
-ssh = paramiko.SSHClient()
-ssh.load_system_host_keys()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect(settings.REMOTE_SERVER)
-scp = SCPClient(ssh.get_transport())
+
+# ssh = paramiko.SSHClient()
+# ssh.load_system_host_keys()
+# ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+# ssh.connect(settings.REMOTE_SERVER)
+# scp = SCPClient(ssh.get_transport())
 
 def rebuild_engine():
     cursor = MySQLdb.cursors.SSCursor
-    engine = create_engine(settings.MYSQL_CONNECTION_STRING, encoding='latin-1',
-        connect_args={'cursorclass':cursor})
+    engine = create_engine(settings.MYSQL_CONNECTION_STRING,
+                           encoding='latin-1',
+                           connect_args={'cursorclass': cursor})
     connection = engine.connect()
     return (engine, connection, cursor)
 
-"""
-meta = MetaData()
-meta.reflect(bind=engine)
-meta = pickle.load(open('meta.pickle'))
-for (such_meta, very_wow) in meta.tables.items():
-    setattr(__import__(__name__), such_meta, very_wow)
-articles_select = select([
-    content_type_article.c.nid, 
-    node.c.title, 
-    content_field_dek.c.field_dek_value, 
-    content_field_article_text.c.field_article_text_value, 
-    content_field_alternate_dek.c.field_alternate_dek_value,
-    content_field_alternate_title.c.field_alternate_title_value,
-    content_field_social_dek.c.field_social_dek_value,
-    content_field_social_title.c.field_social_title_value, 
-    content_field_master_image.c.field_master_image_data,
-    files.c.filepath])
-"""
 
 def export_to_json_files(ctype, select, index_id, on_each):
     (engine, connection, cursor) = rebuild_engine()
-    articles = connection.execution_options(
-        stream_results=True).execute(select % index_id)
+    articles = connection.execution_options(stream_results=True).execute(select)
     try:
         for article in articles:
             if article:
-                index_id = article.nid
                 path = os.path.join('.', 'cached', ctype, str(article.nid))
-                print path
-                print article.nid
+                logging.debug("Path: %s" % path)
+                logging.debug("Article: %s" % article.nid)
                 if not os.path.exists(path):
                     os.makedirs(path)
                 path = os.path.join(path, '%s.orig' % article.vid)
-                json.dump(dict(article), open(path+'.json', 'w'), ensure_ascii=False, sort_keys=True, indent=4)
-                on_each(article, path, scp)
+                article_dict = unicodify(dict(article))
+                json.dump(article_dict, open(path+'.json', 'w'),
+                          ensure_ascii=False, sort_keys=True, indent=4)
+                # on_each(article, path, scp)
     except Exception, e:
         print e
         articles.close()
         connection.close()
         export_to_json_files(ctype, select, index_id, on_each)
 
-def build_articles(index_id=0):
+def build_articles(bounds):
+    # SELECT node.title name, author.field_author_title_value position, author.field_author_bio_short_value, author.field_last_name_value, users.mail email from content_type_author author LEFT JOIN node ON node.nid = author.nid LEFT JOIN users ON users.uid = author.field_user_uid
     select = """
-    select
-    article.nid as nid,
-    article.vid as vid,
+    SELECT
+    article.nid as nid, article.vid as vid,
     body.field_article_text_value as data,
     body.field_article_text_format as data_format,
-    
-    node.title as title,
-    dek.field_dek_value as description, 
-
+    node.title as title, dek.field_dek_value as description,
     alt_title.field_alternate_title_value as alt_title,
     alt_dek.field_alternate_dek_value as alt_description,
-
     social_title.field_social_title_value as social_title,
     social_dek.field_social_dek_value as social_description,
-
     master_image_file.filename as master_image_filename,
-    master_image_file.filepath as master_image_filepath
+    master_image_file.filepath as master_image_filepath,
 
-    from content_type_article as article 
-    left join node ON article.nid = node.nid and article.vid = node.vid
+    author_node.title byline_name,
+    author.field_author_title_value byline_position,
+    author.field_author_bio_short_value byline_bio,
+    author.field_last_name_value byline_last_name
 
-    left join content_field_dek as dek ON node.nid = dek.nid  and node.vid = dek.vid
-    left join content_field_article_text as body ON node.nid = body.nid and node.vid = body.vid 
+    FROM content_type_article as article
 
-    left join content_field_alternate_dek as alt_dek ON node.nid = alt_dek.nid and node.vid = alt_dek.vid 
-    left join content_field_alternate_title as alt_title ON node.nid = alt_title.nid  and node.vid = alt_title.vid 
+    LEFT JOIN node ON article.nid = node.nid and article.vid = node.vid
+    LEFT JOIN content_field_dek as dek ON node.nid = dek.nid  and node.vid = dek.vid
+    LEFT JOIN content_field_article_text as body ON node.nid = body.nid and node.vid = body.vid
 
-    left join content_field_social_dek as social_dek ON node.nid = social_dek.nid  and node.vid = social_dek.vid
-    left join content_field_social_title as social_title ON node.nid = social_title.nid  and node.vid = social_title.vid
+    LEFT JOIN content_field_alternate_dek as alt_dek ON node.nid = alt_dek.nid and node.vid = alt_dek.vid
+    LEFT JOIN content_field_alternate_title as alt_title ON node.nid = alt_title.nid  and node.vid = alt_title.vid
 
-    left join content_field_master_image as master_image ON node.nid = master_image.nid and node.vid = master_image.vid
-    left join files as master_image_file ON master_image.field_master_image_fid = master_image_file.fid
-    where article.nid >= %s
-    order by article.nid
+    LEFT JOIN content_field_social_dek as social_dek ON node.nid = social_dek.nid  and node.vid = social_dek.vid
+    LEFT JOIN content_field_social_title as social_title ON node.nid = social_title.nid  and node.vid = social_title.vid
+
+    LEFT JOIN content_field_master_image as master_image ON node.nid = master_image.nid and node.vid = master_image.vid
+    LEFT JOIN files as master_image_file ON master_image.field_master_image_fid = master_image_file.fid
+
+    LEFT JOIN content_field_byline byline ON node.nid = byline.nid AND node.vid = byline.vid
+    LEFT JOIN content_type_author author ON byline.field_byline_nid = author.nid
+    LEFT JOIN node author_node ON author_node.nid = author.nid
+
+    WHERE article.nid >= 0
+    ORDER BY article.nid
     """
-    def copy_master_image(article, path, scp): 
+
+    def copy_master_image(article, path, scp):
         if article.master_image_filepath:
             from_path = os.path.join(settings.REMOTE_FILES, article.master_image_filepath[6:])
             index_id = article.nid
@@ -107,7 +97,9 @@ def build_articles(index_id=0):
                     path+'.master_image.'+article.master_image_filename)
             except Exception, e:
                 print e
-    export_to_json_files('articles', select, index_id, copy_master_image)
+    if bounds:
+        select += "LIMIT %s" % bounds
+    export_to_json_files('articles', select, 0, copy_master_image)
 
 
 def build_authors():
@@ -136,3 +128,11 @@ def build_authors():
             print article.photograph_filename
     export_to_json_files('authors', articles, copy_photo)
 
+
+def unicodify(dicti):
+    for k, value in dicti:
+        dicti[k] = value.encode('utf-8')
+    return dicti
+
+def debug():
+    pass

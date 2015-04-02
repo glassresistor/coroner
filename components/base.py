@@ -14,6 +14,7 @@ import local_settings as settings
 # ssh.connect(settings.REMOTE_SERVER)
 # scp = SCPClient(ssh.get_transport())
 
+
 def rebuild_engine():
     cursor = MySQLdb.cursors.SSCursor
     engine = create_engine(settings.MYSQL_CONNECTION_STRING,
@@ -26,9 +27,9 @@ def rebuild_engine():
 def export_to_json_files(ctype, select, index_id, on_each):
     (engine, connection, cursor) = rebuild_engine()
     articles = connection.execution_options(stream_results=True).execute(select)
-    try:
-        for article in articles:
-            if article:
+    for article in articles:
+        if article:
+            try:
                 path = os.path.join('.', 'cached', ctype, str(article.nid))
                 logging.debug("Path: %s" % path)
                 logging.debug("Article: %s" % article.nid)
@@ -39,11 +40,14 @@ def export_to_json_files(ctype, select, index_id, on_each):
                 json.dump(article_dict, open(path+'.json', 'w'),
                           ensure_ascii=False, sort_keys=True, indent=4)
                 # on_each(article, path, scp)
-    except Exception, e:
-        print e
-        articles.close()
-        connection.close()
-        export_to_json_files(ctype, select, index_id, on_each)
+            except (KeyboardInterrupt, SystemExit):
+                connection.close()
+            except Exception, e:
+                logging.warning(e)
+                next
+                #articles.close()
+                #connection.close()
+                #export_to_json_files(ctype, select, index_id, on_each)
 
 def build_articles(bounds):
     # SELECT node.title name, author.field_author_title_value position, author.field_author_bio_short_value, author.field_last_name_value, users.mail email from content_type_author author LEFT JOIN node ON node.nid = author.nid LEFT JOIN users ON users.uid = author.field_user_uid
@@ -91,10 +95,9 @@ def build_articles(bounds):
     def copy_master_image(article, path, scp):
         if article.master_image_filepath:
             from_path = os.path.join(settings.REMOTE_FILES, article.master_image_filepath[6:])
-            index_id = article.nid
             try:
                 scp.get(from_path,
-                    path+'.master_image.'+article.master_image_filename)
+                        path+'.master_image.'+article.master_image_filename)
             except Exception, e:
                 print e
     if bounds:
@@ -130,8 +133,9 @@ def build_authors():
 
 
 def unicodify(dicti):
-    for k, value in dicti:
-        dicti[k] = value.encode('utf-8')
+    for k, value in dicti.iteritems():
+        if isinstance(value, str):
+            dicti[k] = value.encode('utf-8')
     return dicti
 
 def debug():

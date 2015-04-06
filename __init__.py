@@ -4,9 +4,9 @@ import local_settings as settings
 import argparse
 import logging
 
-def build_component(component_type, number):
+def build_component(component_type, number, node_ids):
     rebuild_engine()
-    build_articles(number)
+    build_articles(number, node_ids)
 
 def main():
     COMPONENT_TYPE_CHOICES = ['article', 'all', 'debug']
@@ -15,7 +15,16 @@ def main():
     parser.add_argument('component',
             choices=COMPONENT_TYPE_CHOICES,
             help="specify component to convert (or `all` for everything)")
+    parser.add_argument(
+            '-r', '--range',
+            type=int, nargs=2,
+            help="range of Drupal records to return by NID"
+            )
     parser.add_argument('-n', '--number', type=int, help="number of Drupal records to return")
+    parser.add_argument(
+            '-o', '--offset',
+            type=int, default=0,
+            help="offset for the number of returned records")
     parser.add_argument('-v', '--verbosity', action="count", default=0)
     args = parser.parse_args()
 
@@ -27,10 +36,12 @@ def main():
         loglevel = logging.NOTSET
     logging.basicConfig(level=loglevel)
 
+    bounds = [args.offset, args.number]
+
     if args.component == 'debug':
         debug()
     else:
-        build_component(args.component, args.number)
+        build_component(args.component, bounds, args.range)
 
 if __name__ == '__main__':
     main()

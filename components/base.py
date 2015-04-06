@@ -36,12 +36,14 @@ def export_to_json_files(ctype, select, index_id, on_each):
                 if not os.path.exists(path):
                     os.makedirs(path)
                 path = os.path.join(path, '%s.orig' % article.vid)
-                article_dict = unicodify(dict(article))
-                json.dump(article_dict, open(path+'.json', 'w'),
-                          ensure_ascii=False, sort_keys=True, indent=4)
+                serialized_article(article)
+                json.dump(
+                    serialized_article(article),
+                    open(path+'.json', 'w'),
+                    ensure_ascii=False, sort_keys=True, indent=4)
                 # on_each(article, path, scp)
-            except (KeyboardInterrupt, SystemExit):
-                connection.close()
+            #except (KeyboardInterrupt, SystemExit):
+            #    connection.close()
             except Exception, e:
                 logging.warning(e)
                 next
@@ -49,7 +51,9 @@ def export_to_json_files(ctype, select, index_id, on_each):
                 #connection.close()
                 #export_to_json_files(ctype, select, index_id, on_each)
 
-def build_articles(bounds):
+    connection.close()
+
+def build_articles(bounds, article_ids=None):
     # SELECT node.title name, author.field_author_title_value position, author.field_author_bio_short_value, author.field_last_name_value, users.mail email from content_type_author author LEFT JOIN node ON node.nid = author.nid LEFT JOIN users ON users.uid = author.field_user_uid
     select = """
     SELECT
@@ -63,11 +67,7 @@ def build_articles(bounds):
     social_dek.field_social_dek_value as social_description,
     master_image_file.filename as master_image_filename,
     master_image_file.filepath as master_image_filepath,
-
-    author_node.title byline_name,
-    author.field_author_title_value byline_position,
-    author.field_author_bio_short_value byline_bio,
-    author.field_last_name_value byline_last_name
+    GROUP_CONCAT(byline.field_byline_nid) byline_ids
 
     FROM content_type_article as article
 
@@ -85,12 +85,19 @@ def build_articles(bounds):
     LEFT JOIN files as master_image_file ON master_image.field_master_image_fid = master_image_file.fid
 
     LEFT JOIN content_field_byline byline ON node.nid = byline.nid AND node.vid = byline.vid
-    LEFT JOIN content_type_author author ON byline.field_byline_nid = author.nid
-    LEFT JOIN node author_node ON author_node.nid = author.nid
 
-    WHERE article.nid >= 0
-    ORDER BY article.nid
+    WHERE article.nid {}
+    GROUP BY article.nid
     """
+
+    if article_ids:
+        where_clause = "BETWEEN {} AND {}".format(*article_ids)
+        select = select.format(where_clause)
+    else:
+        select = select.format(">= 0")
+
+    if bounds and isinstance(bounds[1], int):
+        select += "LIMIT {}, {}".format(*bounds)
 
     def copy_master_image(article, path, scp):
         if article.master_image_filepath:
@@ -100,9 +107,13 @@ def build_articles(bounds):
                         path+'.master_image.'+article.master_image_filename)
             except Exception, e:
                 print e
-    if bounds:
-        select += "LIMIT %s" % bounds
     export_to_json_files('articles', select, 0, copy_master_image)
+
+def serialized_article(article):
+    article_dict = unicodify(dict(article))
+    byline_ids = article_dict["byline_ids"].split(',')
+    article_dict["byline_ids"] = [int(x) for x in byline_ids]
+    return article_dict
 
 
 def build_authors():

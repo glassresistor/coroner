@@ -15,46 +15,37 @@ import local_settings as settings
 # scp = SCPClient(ssh.get_transport())
 
 
-def rebuild_engine():
-    cursor = MySQLdb.cursors.SSCursor
-    engine = create_engine(settings.MYSQL_CONNECTION_STRING,
-                           encoding='latin-1',
-                           connect_args={'cursorclass': cursor})
-    connection = engine.connect()
-    return (engine, connection, cursor)
+def build_component(c_type, number, node_ids):
+    if c_type == 'article':
+        export_to_json_files(ArticleBuilder(number, node_ids))
+    elif c_type =='author':
+        export_to_json_files(AuthorBuilder(number, node_ids))
+    elif c_type == 'debug':
+        debug()
+    else:
+        return "All?"
 
 
-def export_to_json_files(ctype, select, index_id, on_each):
-    (engine, connection, cursor) = rebuild_engine()
-    articles = connection.execution_options(stream_results=True).execute(select)
-    for article in articles:
-        if article:
-            try:
-                path = os.path.join('.', 'cached', ctype, str(article.nid))
-                logging.debug("Path: %s" % path)
-                logging.debug("Article: %s" % article.nid)
-                if not os.path.exists(path):
-                    os.makedirs(path)
-                path = os.path.join(path, '%s.orig' % article.vid)
-                serialized_article(article)
-                json.dump(
-                    serialized_article(article),
-                    open(path+'.json', 'w'),
-                    ensure_ascii=False, sort_keys=True, indent=4)
-                # on_each(article, path, scp)
-            #except (KeyboardInterrupt, SystemExit):
-            #    connection.close()
-            except Exception, e:
-                logging.warning(e)
-                next
-                #articles.close()
-                #connection.close()
-                #export_to_json_files(ctype, select, index_id, on_each)
+class ComponentBuilder(object):
+    select = ""
+    def __init__(self, bounds, node_ids):
+        if node_ids:
+            where_clause = "BETWEEN {} AND {}".format(*article_ids)
+            self.select = self.select.format(where_clause)
+        else:
+            self.select = self.select.format(">= 0")
+        if bounds and isinstance(bounds[1], int):
+            self.select += "LIMIT {}, {}".format(*bounds)
 
-    connection.close()
+    def ctype(self):
+        name_str = self.__class__.__name__
+        return name_str[:(len(name_str) - 7)].lower()
 
-def build_articles(bounds, article_ids=None):
-    # SELECT node.title name, author.field_author_title_value position, author.field_author_bio_short_value, author.field_last_name_value, users.mail email from content_type_author author LEFT JOIN node ON node.nid = author.nid LEFT JOIN users ON users.uid = author.field_user_uid
+    def serialize(self, node):
+        return unicodify(dict(node))
+
+
+class ArticleBuilder(ComponentBuilder):
     select = """
     SELECT
     article.nid as nid, article.vid as vid,
@@ -90,15 +81,6 @@ def build_articles(bounds, article_ids=None):
     GROUP BY article.nid
     """
 
-    if article_ids:
-        where_clause = "BETWEEN {} AND {}".format(*article_ids)
-        select = select.format(where_clause)
-    else:
-        select = select.format(">= 0")
-
-    if bounds and isinstance(bounds[1], int):
-        select += "LIMIT {}, {}".format(*bounds)
-
     def copy_master_image(article, path, scp):
         if article.master_image_filepath:
             from_path = os.path.join(settings.REMOTE_FILES, article.master_image_filepath[6:])
@@ -107,16 +89,16 @@ def build_articles(bounds, article_ids=None):
                         path+'.master_image.'+article.master_image_filename)
             except Exception, e:
                 print e
-    export_to_json_files('articles', select, 0, copy_master_image)
 
-def serialized_article(article):
-    article_dict = unicodify(dict(article))
-    byline_ids = article_dict["byline_ids"].split(',')
-    article_dict["byline_ids"] = [int(x) for x in byline_ids]
-    return article_dict
+    def serialize(self, node):
+        article_dict = unicodify(dict(node))
+        if article_dict.has_key("byline_ids") and article_dict["byline_ids"] is not None:
+            byline_ids = article_dict["byline_ids"].split(',')
+            article_dict["byline_ids"] = [int(x) for x in byline_ids]
+        return article_dict
 
 
-def build_authors():
+class AuthorBuilder(ComponentBuilder):
     select = """
     select
     author.nid as nid,
@@ -133,15 +115,53 @@ def build_authors():
     left join node on node.nid = author.nid and node.vid = author.vid
     left join files on author.field_photo_fid = files.fid
     """
-    articles = connection.execution_options(stream_results=True).execute(select)
+
     def copy_photo(article, path):
         try:
             scp.get(os.path.join(settings.REMOTE_FILES, 'photo', article.photograph_filename),
             path+'.'+article.photograph_filename)
         except Exception, e:
             print article.photograph_filename
-    export_to_json_files('authors', articles, copy_photo)
 
+
+
+def rebuild_engine():
+    cursor = MySQLdb.cursors.SSCursor
+    engine = create_engine(settings.MYSQL_CONNECTION_STRING,
+                           encoding='latin-1',
+                           connect_args={'cursorclass': cursor})
+    connection = engine.connect()
+    return (engine, connection, cursor)
+
+def export_to_json_files(builder):
+    (engine, connection, cursor) = rebuild_engine()
+    nodes = connection.execution_options(
+            stream_results=True).execute(
+            builder.select)
+    for node in nodes:
+        if node:
+            try:
+                path = os.path.join('.', 'cached', builder.ctype(), str(node.nid))
+                logging.debug("Path: %s" % path)
+                logging.debug("Node: %s" % node.nid)
+                if not os.path.exists(path):
+                    os.makedirs(path)
+                path = os.path.join(path, '%s.orig' % node.vid)
+                json.dump(
+                    builder.serialize(node),
+                    open(path+'.json', 'w'),
+                    ensure_ascii=False, sort_keys=True, indent=4)
+                # on_each(article, path, scp)
+            #except (KeyboardInterrupt, SystemExit):
+            #    connection.close()
+            except Exception, e:
+                logging.warning(e)
+                next
+                #articles.close()
+                #connection.close()
+                #export_to_json_files(ctype, select, index_id, on_each)
+
+    connection.close()
 
 def unicodify(dicti):
     for k, value in dicti.iteritems():

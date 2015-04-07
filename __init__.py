@@ -1,15 +1,12 @@
 #!/usr/bin/env python
-from components.base import rebuild_engine, build_articles, debug
+from components.base import build_component
 import local_settings as settings
 import argparse
 import logging
 
-def build_component(component_type, number, node_ids):
-    rebuild_engine()
-    build_articles(number, node_ids)
 
 def main():
-    COMPONENT_TYPE_CHOICES = ['article', 'all', 'debug']
+    COMPONENT_TYPE_CHOICES = ['article', 'all', 'debug', 'author']
     parser = argparse.ArgumentParser(
             description="Converts Drupal6 data into JSON for Mirrors")
     parser.add_argument('component',

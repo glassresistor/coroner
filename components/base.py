@@ -114,6 +114,7 @@ class AuthorBuilder(ComponentBuilder):
     from content_type_author as author
     left join node on node.nid = author.nid and node.vid = author.vid
     left join files on author.field_photo_fid = files.fid
+    WHERE author.nid {}
     """
 
     def copy_photo(article, path):

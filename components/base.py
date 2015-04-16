@@ -3,16 +3,16 @@ import json
 import logging
 import MySQLdb.cursors
 from sqlalchemy import create_engine
+import paramiko
+import scpclient
 import local_settings as settings
-# import paramiko
-# from scp import SCPClient
 
 
-# ssh = paramiko.SSHClient()
+ssh_client = paramiko.SSHClient()
 # ssh.load_system_host_keys()
 # ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-# ssh.connect(settings.REMOTE_SERVER)
-# scp = SCPClient(ssh.get_transport())
+ssh_client.connect(settings.REMOTE_SERVER)
+scp = SCPClient(ssh.get_transport())
 
 
 def build_component(c_type, number, node_ids):
@@ -43,6 +43,9 @@ class ComponentBuilder(object):
 
     def serialize(self, node):
         return unicodify(dict(node))
+
+    def postprocess(self, node, path):
+        pass
 
 
 class ArticleBuilder(ComponentBuilder):
@@ -100,30 +103,33 @@ class ArticleBuilder(ComponentBuilder):
 
 class AuthorBuilder(ComponentBuilder):
     select = """
-    select
-    author.nid as nid,
-    author.vid as vid,
-    node.title as full_name,
-    author.field_author_title_value as title,
-    author.field_contrib_bio_value as data,
-    author.field_author_bio_value as short_bio,
-    author.field_author_bio_short_value as end_of_article_bio,
-    author.field_twitter_user_value as twitter,
-    files.filename as photograph_filename
-
-    from content_type_author as author
-    left join node on node.nid = author.nid and node.vid = author.vid
-    left join files on author.field_photo_fid = files.fid
-    WHERE author.nid {}
+    SELECT node.nid, author.vid, node.title full_name,
+           author.field_author_title_value title,
+           author.field_contrib_bio_value as data,
+           author.field_author_bio_value as short_bio,
+           author.field_author_bio_short_value as end_of_article_bio,
+           author.field_twitter_user_value as twitter,
+           files.filename img_path
+    FROM node
+    LEFT JOIN content_type_author author on node.nid = author.nid
+    LEFT JOIN files on author.field_photo_fid = files.fid
+    WHERE node.type='author'
     """
 
-    def copy_photo(article, path):
-        try:
-            scp.get(os.path.join(settings.REMOTE_FILES, 'photo', article.photograph_filename),
-            path+'.'+article.photograph_filename)
-        except Exception, e:
-            print article.photograph_filename
+    def postprocess(self, node, current_path):
+        self._copy_photo(node, current_path)
 
+    def _copy_photo(self, node, current_path):
+        remote_path = os.path.join(settings.REMOTE_FILES,
+                'photo', node.img_path)
+        local_path = os.path.join(current_path, node.img_path)
+        logging.debug(remote_path)
+        logging.debug(local_path)
+        if not node.img_path: return
+        try:
+            scp.get(remote_path, local_path)
+        except Exception, e:
+            logging.warning(e)
 
 
 def rebuild_engine():
@@ -136,6 +142,7 @@ def rebuild_engine():
 
 def export_to_json_files(builder):
     (engine, connection, cursor) = rebuild_engine()
+    logging.debug(builder.select)
     nodes = connection.execution_options(
             stream_results=True).execute(
             builder.select)
@@ -152,16 +159,10 @@ def export_to_json_files(builder):
                     builder.serialize(node),
                     open(path+'.json', 'w'),
                     ensure_ascii=False, sort_keys=True, indent=4)
-                # on_each(article, path, scp)
-            #except (KeyboardInterrupt, SystemExit):
-            #    connection.close()
+                builder.postprocess(node, path)
             except Exception, e:
                 logging.warning(e)
                 next
-                #articles.close()
-                #connection.close()
-                #export_to_json_files(ctype, select, index_id, on_each)
-
     connection.close()
 
 def unicodify(dicti):

@@ -3,16 +3,16 @@ import json
 import logging
 import MySQLdb.cursors
 from sqlalchemy import create_engine
-import paramiko
-import scpclient
+from plumbum import SshMachine, local
+from plumbum.path.utils import copy
 import local_settings as settings
 
 
-ssh_client = paramiko.SSHClient()
-# ssh.load_system_host_keys()
-# ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh_client.connect(settings.REMOTE_SERVER)
-scp = SCPClient(ssh.get_transport())
+# ssh_client = paramiko.SSHClient()
+# ssh_client.load_system_host_keys()
+# ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+# ssh_client.connect(settings.REMOTE_SERVER)
+remote = SshMachine(settings.REMOTE_SERVER)
 
 
 def build_component(c_type, number, node_ids):
@@ -120,14 +120,11 @@ class AuthorBuilder(ComponentBuilder):
         self._copy_photo(node, current_path)
 
     def _copy_photo(self, node, current_path):
-        remote_path = os.path.join(settings.REMOTE_FILES,
-                'photo', node.img_path)
-        local_path = os.path.join(current_path, node.img_path)
-        logging.debug(remote_path)
-        logging.debug(local_path)
-        if not node.img_path: return
+        remote_img = os.path.join(settings.REMOTE_FILES, "photo", node.img_path)
+        local_path = local.path(os.path.join(current_path, node.img_path))
+        if not node.img_path or os.path.exists(local_path): return
         try:
-            scp.get(remote_path, local_path)
+            copy(remote.path(remote_img), local_path)
         except Exception, e:
             logging.warning(e)
 
@@ -148,22 +145,21 @@ def export_to_json_files(builder):
             builder.select)
     for node in nodes:
         if node:
+            path = os.path.join('.', 'cached', builder.ctype(), str(node.nid))
+            if not os.path.exists(path):
+                os.makedirs(path)
+            filepath = os.path.join(path, '%s.orig.json' % node.vid)
             try:
-                path = os.path.join('.', 'cached', builder.ctype(), str(node.nid))
-                logging.debug("Path: %s" % path)
-                logging.debug("Node: %s" % node.nid)
-                if not os.path.exists(path):
-                    os.makedirs(path)
-                path = os.path.join(path, '%s.orig' % node.vid)
                 json.dump(
                     builder.serialize(node),
-                    open(path+'.json', 'w'),
+                    open(filepath, 'w'),
                     ensure_ascii=False, sort_keys=True, indent=4)
-                builder.postprocess(node, path)
             except Exception, e:
                 logging.warning(e)
                 next
+            builder.postprocess(node, path)
     connection.close()
+    remote.close()
 
 def unicodify(dicti):
     for k, value in dicti.iteritems():

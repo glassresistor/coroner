@@ -31,7 +31,7 @@ def main():
         loglevel = logging.INFO
     else:
         loglevel = logging.NOTSET
-    logging.basicConfig(level=loglevel)
+    logging.root.setLevel(level=loglevel)
 
     bounds = [args.offset, args.number]
 

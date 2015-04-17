@@ -8,12 +8,8 @@ from plumbum.path.utils import copy
 import local_settings as settings
 
 
-# ssh_client = paramiko.SSHClient()
-# ssh_client.load_system_host_keys()
-# ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-# ssh_client.connect(settings.REMOTE_SERVER)
-remote = SshMachine(settings.REMOTE_SERVER)
-
+global remote
+remote = SshMachine(settings.REMOTE_SERVER, user=settings.REMOTE_USER, keyfile=settings.REMOTE_KEY_PATH)
 
 def build_component(c_type, number, node_ids):
     if c_type == 'article':
@@ -120,11 +116,12 @@ class AuthorBuilder(ComponentBuilder):
         self._copy_photo(node, current_path)
 
     def _copy_photo(self, node, current_path):
+        if not node.img_path: return
+        local_img = os.path.join(current_path, node.img_path)
         remote_img = os.path.join(settings.REMOTE_FILES, "photo", node.img_path)
-        local_path = local.path(os.path.join(current_path, node.img_path))
-        if not node.img_path or os.path.exists(local_path): return
+        if os.path.exists(local_img): return
         try:
-            copy(remote.path(remote_img), local_path)
+            copy(remote.path(remote_img), local.path(local_img))
         except Exception, e:
             logging.warning(e)
 

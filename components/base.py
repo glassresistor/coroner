@@ -8,10 +8,10 @@ from plumbum.path.utils import copy
 import local_settings as settings
 
 
-global remote
-remote = SshMachine(settings.REMOTE_SERVER, user=settings.REMOTE_USER, keyfile=settings.REMOTE_KEY_PATH)
+remote = None # reserved for SCP
 
 def build_component(c_type, number, node_ids):
+    setup_scp()
     if c_type == 'article':
         export_to_json_files(ArticleBuilder(number, node_ids))
     elif c_type =='author':
@@ -128,6 +128,14 @@ class AuthorBuilder(ComponentBuilder):
             copy(remote.path(remote_img), local.path(local_img))
         except Exception, e:
             logging.warning(e)
+
+
+def setup_scp():
+    try:
+        global remote
+        remote = SshMachine(settings.REMOTE_SERVER, user=settings.REMOTE_USER, keyfile=settings.REMOTE_KEY_PATH)
+    except EOFError:
+        setup_scp()
 
 
 def rebuild_engine():

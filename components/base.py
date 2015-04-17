@@ -130,7 +130,8 @@ class AuthorBuilder(ComponentBuilder):
             logging.warning(e)
 
 
-def setup_scp():
+def setup_scp(tries_remaining=3):
+    if tries_remaining <=0: return "Couldn't connect to remote machine."
     try:
         global remote
         remote = SshMachine(settings.REMOTE_SERVER, user=settings.REMOTE_USER, keyfile=settings.REMOTE_KEY_PATH)

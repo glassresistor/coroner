@@ -8,10 +8,10 @@ from plumbum.path.utils import copy
 import local_settings as settings
 
 
-global remote
-remote = SshMachine(settings.REMOTE_SERVER, user=settings.REMOTE_USER, keyfile=settings.REMOTE_KEY_PATH)
+remote = None # reserved for SCP
 
 def build_component(c_type, number, node_ids):
+    setup_scp()
     if c_type == 'article':
         export_to_json_files(ArticleBuilder(number, node_ids))
     elif c_type =='author':
@@ -80,14 +80,18 @@ class ArticleBuilder(ComponentBuilder):
     GROUP BY article.nid
     """
 
-    def copy_master_image(article, path, scp):
-        if article.master_image_filepath:
-            from_path = os.path.join(settings.REMOTE_FILES, article.master_image_filepath[6:])
-            try:
-                scp.get(from_path,
-                        path+'.master_image.'+article.master_image_filename)
-            except Exception, e:
-                print e
+    def postprocess(self, node, current_path):
+        self._copy_master_image(node, current_path)
+
+    def _copy_master_image(self, node, current_path):
+        if not node.master_image_filepath: return
+        local_img = os.path.join(current_path,'master_image.' + node.master_image_filepath.split(os.sep)[-1])
+        remote_img = os.path.join(settings.REMOTE_FILES, node.master_image_filepath[6:])
+        if os.path.exists(local_img): return
+        try:
+            copy(remote.path(remote_img), local.path(local_img))
+        except Exception, e:
+            logging.warning(e)
 
     def serialize(self, node):
         article_dict = unicodify(dict(node))
@@ -124,6 +128,15 @@ class AuthorBuilder(ComponentBuilder):
             copy(remote.path(remote_img), local.path(local_img))
         except Exception, e:
             logging.warning(e)
+
+
+def setup_scp(tries_remaining=3):
+    if tries_remaining <=0: return "Couldn't connect to remote machine."
+    try:
+        global remote
+        remote = SshMachine(settings.REMOTE_SERVER, user=settings.REMOTE_USER, keyfile=settings.REMOTE_KEY_PATH)
+    except EOFError:
+        setup_scp()
 
 
 def rebuild_engine():

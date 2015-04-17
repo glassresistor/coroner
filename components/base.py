@@ -80,14 +80,18 @@ class ArticleBuilder(ComponentBuilder):
     GROUP BY article.nid
     """
 
-    def copy_master_image(article, path, scp):
-        if article.master_image_filepath:
-            from_path = os.path.join(settings.REMOTE_FILES, article.master_image_filepath[6:])
-            try:
-                scp.get(from_path,
-                        path+'.master_image.'+article.master_image_filename)
-            except Exception, e:
-                print e
+    def postprocess(self, node, current_path):
+        self._copy_master_image(node, current_path)
+
+    def _copy_master_image(self, node, current_path):
+        if not node.master_image_filepath: return
+        local_img = os.path.join(current_path,'master_image.' + node.master_image_filepath.split(os.sep)[-1])
+        remote_img = os.path.join(settings.REMOTE_FILES, node.master_image_filepath[6:])
+        if os.path.exists(local_img): return
+        try:
+            copy(remote.path(remote_img), local.path(local_img))
+        except Exception, e:
+            logging.warning(e)
 
     def serialize(self, node):
         article_dict = unicodify(dict(node))

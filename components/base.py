@@ -5,12 +5,15 @@ import MySQLdb.cursors
 from sqlalchemy import create_engine
 from plumbum import SshMachine, local
 from plumbum.path.utils import copy
-import local_settings as settings
+from collections import namedtuple
+#import local_settings as settings
 
 
 remote = None # reserved for SCP
+settings = None
 
 def build_component(c_type, number, node_ids):
+    retrieve_settings()
     setup_scp()
     if c_type == 'article':
         export_to_json_files(ArticleBuilder(number, node_ids))
@@ -86,7 +89,7 @@ class ArticleBuilder(ComponentBuilder):
     def _copy_master_image(self, node, current_path):
         if not node.master_image_filepath: return
         local_img = os.path.join(current_path,'master_image.' + node.master_image_filepath.split(os.sep)[-1])
-        remote_img = os.path.join(settings.REMOTE_FILES, node.master_image_filepath[6:])
+        remote_img = os.path.join(settings.remote_files, node.master_image_filepath[6:])
         if os.path.exists(local_img): return
         try:
             copy(remote.path(remote_img), local.path(local_img))
@@ -122,7 +125,7 @@ class AuthorBuilder(ComponentBuilder):
     def _copy_photo(self, node, current_path):
         if not node.img_path: return
         local_img = os.path.join(current_path, node.img_path)
-        remote_img = os.path.join(settings.REMOTE_FILES, "photo", node.img_path)
+        remote_img = os.path.join(settings.remote_files, "photo", node.img_path)
         if os.path.exists(local_img): return
         try:
             copy(remote.path(remote_img), local.path(local_img))
@@ -130,18 +133,26 @@ class AuthorBuilder(ComponentBuilder):
             logging.warning(e)
 
 
+# Returns a struct of all the settings.
+def retrieve_settings():
+    from yaml import load
+    Settings = namedtuple('Settings', 'mysql_connection_string remote_files remote_user remote_server remote_key_path')
+    conf = load(open("settings.yaml", 'r'))
+    global settings
+    settings = Settings(**conf)
+
 def setup_scp(tries_remaining=3):
     if tries_remaining <=0: return "Couldn't connect to remote machine."
     try:
         global remote
-        remote = SshMachine(settings.REMOTE_SERVER, user=settings.REMOTE_USER, keyfile=settings.REMOTE_KEY_PATH)
+        remote = SshMachine(settings.remote_server, user=settings.remote_user, keyfile=settings.remote_key_path)
     except EOFError:
         setup_scp()
 
 
 def rebuild_engine():
     cursor = MySQLdb.cursors.SSCursor
-    engine = create_engine(settings.MYSQL_CONNECTION_STRING,
+    engine = create_engine(settings.mysql_connection_string,
                            encoding='latin-1',
                            connect_args={'cursorclass': cursor})
     connection = engine.connect()
@@ -179,3 +190,6 @@ def unicodify(dicti):
 
 def debug():
     pass
+
+def foo():
+    raise Exception

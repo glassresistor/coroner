@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 from components.base import build_component
-import local_settings as settings
 import argparse
 import logging
 

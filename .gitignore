@@ -1,8 +1,10 @@
 #coroner ignore
-local_settings.py
+settings.yaml
 *.swp
 cached
-meta.pickle
+tests/cached
+tests/fixtures
+.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

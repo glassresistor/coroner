@@ -4,6 +4,14 @@ import argparse
 import logging
 
 
+# Returns a struct of all the settings.
+def retrieve_settings():
+    from yaml import load
+    from collections import namedtuple
+    Settings = namedtuple('Settings', 'mysql_connection_string remote_files remote_user remote_server remote_key_path')
+    conf = load(open("settings.yaml", 'r'))
+    return Settings(**conf)
+
 def main():
     COMPONENT_TYPE_CHOICES = ['article', 'all', 'debug', 'author']
     parser = argparse.ArgumentParser(
@@ -32,12 +40,12 @@ def main():
         loglevel = logging.NOTSET
     logging.root.setLevel(level=loglevel)
 
-    bounds = [args.offset, args.number]
+    node_bounds= [args.offset, args.number]
 
     if args.component == 'debug':
         debug()
     else:
-        build_component(args.component, bounds, args.range)
+        build_component(args.component, bounds=node_bounds, range=args.range, config=retrieve_settings())
 
 if __name__ == '__main__':
     main()

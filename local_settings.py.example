@@ -1,5 +1,0 @@
-MYSQL_CONNECTION_STRING = 'mysql://user:pass@127.0.0.1/database'
-REMOTE_FILES = '/mojo/www/ab0_files'
-REMOTE_SERVER = 'pasta.motherjones.com'
-REMOTE_USER = 'me'
-REMOTE_KEY_PATH = '~/.ssh/key'

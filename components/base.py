@@ -12,13 +12,14 @@ from collections import namedtuple
 remote = None # reserved for SCP
 settings = None
 
-def build_component(c_type, number, node_ids):
-    retrieve_settings()
+def build_component(c_type, bounds=None, range=None, config=None):
+    global settings
+    settings = config
     setup_scp()
     if c_type == 'article':
-        export_to_json_files(ArticleBuilder(number, node_ids))
+        export_to_json_files(ArticleBuilder(bounds, range))
     elif c_type =='author':
-        export_to_json_files(AuthorBuilder(number, node_ids))
+        export_to_json_files(AuthorBuilder(bounds, range))
     elif c_type == 'debug':
         debug()
     else:
@@ -133,14 +134,6 @@ class AuthorBuilder(ComponentBuilder):
             logging.warning(e)
 
 
-# Returns a struct of all the settings.
-def retrieve_settings():
-    from yaml import load
-    Settings = namedtuple('Settings', 'mysql_connection_string remote_files remote_user remote_server remote_key_path')
-    conf = load(open("settings.yaml", 'r'))
-    global settings
-    settings = Settings(**conf)
-
 def setup_scp(tries_remaining=3):
     if tries_remaining <=0: return "Couldn't connect to remote machine."
     try:
@@ -190,6 +183,3 @@ def unicodify(dicti):
 
 def debug():
     pass
-
-def foo():
-    raise Exception

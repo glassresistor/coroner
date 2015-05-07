@@ -1,3 +1,4 @@
 sqlalchemy
 mysql-python
 plumbum
+unidecode

@@ -1,6 +1,8 @@
 import os
 import json
+from datetime import datetime
 from glob import glob
+from unidecode import unidecode
 # load n files from x location
 # - get count of all files of component type Y
 # - find or create file settings.mirrors_dir / fixtures / mirrors_legacy_ Y .json
@@ -27,19 +29,19 @@ def componentify(data_dump):
     data_dump = json.loads(data_dump)
     metadata_dict = {
             "name": data_dump["full_name"],
-            "email": "fixme",
-            "sortable_name": "fixme",
+            "email": data_dump["email"],
+            "sortable_name": sortified_name(data_dump["full_name"], data_dump["last_name"]),
             "short_bio": data_dump["short_bio"],
             "position": data_dump["title"],
             "twitter_user": data_dump["twitter"]
             }
     fields_dict = {
          "schema_name": "author",
-         "updated_at": "fixme",
+         "updated_at": datetime.today().isoformat(),
          "content_type": "text/x-markdown",
-         "slug": 'fixme',
+         "slug": slugify(data_dump["full_name"]),
          "current_metadata": metadata_dict,
-         "created_at": "fixme"
+         "created_at": data_dump["created_at"]
          }
     entry_dict = {
         "model": "mirrors.component",
@@ -47,3 +49,10 @@ def componentify(data_dump):
         "fields": fields_dict
         }
     return json.dumps(entry_dict)
+
+def sortified_name(full_name, last_name):
+    stop = full_name.rfind(last_name)
+    return "{} {}".format(last_name.lower(), full_name[0:stop].strip().lower())
+
+def slugify(full_name):
+    return unidecode(full_name).replace(' ', '-').lower()

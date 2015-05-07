@@ -108,14 +108,18 @@ class ArticleBuilder(ComponentBuilder):
 class AuthorBuilder(ComponentBuilder):
     select = """
     SELECT node.nid, author.vid, node.title full_name,
+            node.created created_at,
            author.field_author_title_value title,
            author.field_contrib_bio_value as data,
+           author.field_last_name_value as last_name,
            author.field_author_bio_value as short_bio,
            author.field_author_bio_short_value as end_of_article_bio,
            author.field_twitter_user_value as twitter,
+           users.mail email,
            files.filename img_path
     FROM node
     LEFT JOIN content_type_author author on node.nid = author.nid
+    LEFT JOIN users on author.field_user_uid = users.uid
     LEFT JOIN files on author.field_photo_fid = files.fid
     WHERE node.type='author'
     """

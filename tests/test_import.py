@@ -18,8 +18,11 @@ class TestCreateFixtures(object):
       }
     example_author_payload = json.dumps({
         "data": None,
+        "created_at": 1228418932,
         "end_of_article_bio": "end of article bio for Jane Doe",
         "full_name": "Jane Doe",
+        "last_name": "Doe",
+        "email": "example@mojones.com",
         "img_path": "drum_kevin80x95.jpg",
         "nid": 4,
         "short_bio": "I write things about stuff.",
@@ -35,7 +38,7 @@ class TestCreateFixtures(object):
             fixture.write(self.example_author_payload)
 
     def teardown(self):
-        pass
+        os.remove('tests/cached/author/0/0.orig.json')
 
     def test_create_no_fixtures(self):
         with pytest.raises(RuntimeError):
